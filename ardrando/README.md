@@ -9,7 +9,7 @@
 - 3x 100k pots
 - 3x 3mm LEDs
 - 1x toggle switch
-- 1x momentory button
+- 1x momentary button
 - 3x 3.5mm mono jacks
 - Resistors
   -  1x 8.2K
@@ -27,11 +27,11 @@ When the toggle is up, it uses an internal clock. When toggle is down, `CLOCKIN`
 
 ### Normal
 
-- Knob 1: _random_.  Full clockwise locks the sequence, full counter-clockwise randomizes the sequnce.
-- Knob 2: _scale_. Clockwise narrows the range of the sequnce, counter-clockwise widens it.
+- Knob 1: _random_.  Full clockwise locks the sequence, full counter-clockwise randomizes the sequence.
+- Knob 2: _scale_. Clockwise narrows the range of the sequence, counter-clockwise widens it.
 - Knob 3: _sequence length_. Set sequence length 1 - 16.
 
-### When Shift buttonn is pressed
+### When Shift button is pressed
 
 #### Held for 2 seconds
 - Knob 1: Set quantization scale 1-8: 1=octaves, 2=octaves and fifths, 3=major, 4=minor, 5=relminor, 6=7th, (default)=all semitones)
