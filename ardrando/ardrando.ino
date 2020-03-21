@@ -2,7 +2,6 @@
 // VERSION:  3.1
 boolean DEBUG = 0;
 boolean NOTEDEBUG = 0;
-boolean KEYDEBUG = 0 ; // this gives details about all the keys pressed at any given moment
 #include <Wire.h>
 //-------------------- Ins and outs -------------------------
 // ---------------------- ANALOG
@@ -10,48 +9,57 @@ boolean KEYDEBUG = 0 ; // this gives details about all the keys pressed at any g
 #define  clock_in A1 // analog clock input
 #define  SDA_pin  A4 // non-negotiable, see pinout
 #define  SCL_pin  A5 // non-negotiable, see pinout
-//     analog inputs for pots 1-4      Shift      |   Normal
+//     analog inputs for pots 1-3      Shift      |   Normal
 //                                   -------------|---------------
 #define  pot1  A3   //              quant scale   |   Random lock
 #define  pot2  A6   //                  bpm       |   Random Scale
 #define  pot3  A7   //              note length   |   Sequence length
 
 // ---------------------- DIGITAL
-#define gateOutPin 5 // uses PWM out
+#define gateOutPin 5  // uses PWM out
 #define led_red 2
 #define led_blue 3
 #define led_green 4
-#define seqPin 6
-#define MCP4725 0x60              //MCP4725 address as 0x61 Change yours accordingly; see http://henrysbench.capnfatz.com/henrys-bench/arduino-projects-tips-and-more/arduino-quick-tip-find-your-i2c-address/
+#define seqPin 6      // this reads toggle state, uses internal pullup resistor
+#define shift 7     // shift button
+#define MCP4725 0x60  //MCP4725 address as 0x61 Change yours accordingly; see http://henrysbench.capnfatz.com/henrys-bench/arduino-projects-tips-and-more/arduino-quick-tip-find-your-i2c-address/
 
 //These are the valid values for scales
-// paste0(sort(c(c((0:8 * 12) + 0), c((0:8 * 12) + 5))), collapse=", ")
+// can generate new ones in R like:  paste0(sort(c(c((0:8 * 12) + 0), c((0:8 * 12) + 5))), collapse=", ")
+// roots only
 uint8_t scale1[9]  = {0, 12, 24, 36, 48, 60, 72, 84, 96};
+// roots fifths
 uint8_t scale2[18] =   {0, 7, 12, 19, 24, 31, 36, 43, 48,
                         55, 60, 67, 72, 79, 84, 91, 96, 103
                        };
+// twos and fifths
 uint8_t scale3[27] =   {0, 2, 7, 12, 14, 19, 24, 26, 31,
                         36, 38, 43, 48, 50, 55, 60, 62, 67,
                         72, 74, 79, 84, 86, 91, 96, 98, 103
                        };
+// major
 uint8_t scale4[27] =   {0, 5, 7, 12, 17, 19, 24, 29, 31,
                         36, 41, 43, 48, 53, 55, 60, 65, 67,
                         72, 77, 79, 84, 89, 91, 96, 101, 103
                        };
+//minor
 uint8_t scale5[27] =   {0, 4, 7, 12, 16, 19, 24, 28, 31,
                         36, 40, 43, 48, 52, 55, 60, 64, 67,
                         72, 76, 79, 84, 88, 91, 96, 100, 103
                        };
+// major 6
 uint8_t scale6[36] =   {0, 5, 7, 9, 12, 17, 19, 21, 24,
                         29, 31, 33, 36, 41, 43, 45, 48, 53,
                         55, 57, 60, 65, 67, 69, 72, 77, 79,
                         81, 84, 89, 91, 93, 96, 101, 103, 105
                        };
+// major 7
 uint8_t scale7[36] =   {0, 5, 7, 10, 12, 17, 19, 22, 24,
                         29, 31, 34, 36, 41, 43, 46, 48, 53,
                         55, 58, 60, 65, 67, 70, 72, 77, 79,
                         82, 84, 89, 91, 94, 96, 101, 103, 106
                        };
+// semitones
 uint8_t scale8[128] =   {1, 2, 3, 4, 5, 6, 7, 8, 9,
                          10, 11, 12, 13, 14, 15, 16, 17, 18,
                          19, 20, 21, 22, 23, 24, 25, 26, 27,
@@ -68,18 +76,11 @@ uint8_t scale8[128] =   {1, 2, 3, 4, 5, 6, 7, 8, 9,
                          118, 119, 120, 121, 122, 123, 124, 125, 126,
                          127, 128
                         };
-// digital input for shift button
-int shift = 7;
 
 // needed for toggle cause it is conductive
 unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
 unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
 
-
-//-------------------- Midi/key defaults  -------------------------
-
-int vel = 87; // default velocity
-int notes = 128;
 
 byte buffer[3];    // for dac
 
@@ -127,12 +128,11 @@ int random_rest;
 void sequencer_mode();
 void edit_mode();
 void update_key(int i, int val);
-void noteOn(int pitch, int velocity);
-void noteOff(int pitch, int velocity);
+void noteOn(int pitch);
+void noteOff(int pitch);
 
 void process_shift_change();
 void setSequence();
-void toggleSequencer();
 void toggleClock();
 void success_leds();
 void waiting_leds();
@@ -145,7 +145,6 @@ void read_seq_and_params();
 void vpoOut(unsigned int pitch);
 void gateOut(unsigned int state);
 
-void check_pots();
 
 // restart function
 void(* resetFunc) (void) = 0;
@@ -187,8 +186,6 @@ void setup() {
   // you could just take the counter - 1 of the seuqencer to get the last note, but what if the seqeunce changes?
   int prev_note;
 
-  vel = 87; // default velocity
-  notes = 128;
 
   delay(50);
 
@@ -206,7 +203,6 @@ void setup() {
 void loop() {
   // base note to start on.
   base = (12 * 3);
-  // check_pots()
   // start by checking if the shift key is pressed.  If so ignore any note changes
   // note shift is connected as a pull up, so activated means 0, deactivated means 1
   int this_clock_state = digitalRead(seqPin);
@@ -269,17 +265,19 @@ void loop() {
 void check_note_length_int() {
   if (gate_is_high) {
     if (millis() > (time_prev_note - (sequencer_lens[seq_counter] * time_between_quarter_notes))) {
-      noteOff(prev_note, 0);
+      noteOff(prev_note);
     }
   }
 }
+
 void check_note_length_ext() {
   if (gate_is_high) {
     if (millis() > (time_prev_note - (sequencer_lens[seq_counter] * time_between_quarter_notes))) {
-      noteOff(prev_note, 0);
+      noteOff(prev_note);
     }
   }
 }
+
 void sequencer_mode() {
 
   // first, check for BPM changes
@@ -394,8 +392,8 @@ void play_sequence() {
     // this is how we play rests
     gateOut(0);
   } else {
-    noteOff(prev_note, 0);
-    noteOn(quantized, vel);
+    noteOff(prev_note);
+    noteOn(quantized);
   }
 
   // increment, resetting counter if need be
@@ -442,19 +440,17 @@ int process_pot(int a_input) {
   //    Serial.print(" ");
   //    Serial.println(thisval);
   //  }
-  // TBD
   return (thisval);
 }
 
 
 ///////////////////////////    Functions for CV   /////////////////
-int divider = 38;
 float noteToVolt(int note) {
   // returns value 0-4096 to sent to DAC
   // note to freq
   // https://en.wikipedia.org/wiki/Piano_key_frequencies
-  float freq = pow(2, ((note - 49) / 12.0)) * 440 ;
-  int constr_note = constrain(note, 36, 97);
+  //float freq = pow(2, ((note - 49) / 12.0)) * 440 ;
+  int constr_note = constrain(note, 36, 97);       // DAC only can do 5 octaves
   int mvolts = map(constr_note, 36, 97, 0, 5000) ; // start at A220
   float volts = (mvolts / 1000.0);
   //  if (DEBUG) {
@@ -469,7 +465,6 @@ float noteToVolt(int note) {
   //    Serial.print("   Volts: ");
   //    Serial.println(volts);
   //  }
-  //return (((note - 60.0) / divider) * 4095.0);
   return (volts);
 }
 
@@ -500,7 +495,7 @@ void vpoOut(unsigned int pitch) {
 ///////////////////////////    Functions for MIDI /////////////////
 
 
-void noteOn(int pitch, int velocity) {
+void noteOn(int pitch) {
   digitalWrite(led_red, HIGH);
   vpoOut(pitch);
   gateOut( 1 );
@@ -514,7 +509,7 @@ void noteOn(int pitch, int velocity) {
   prev_note = pitch;
 }
 
-void noteOff(int pitch, int velocity) {
+void noteOff(int pitch) {
   digitalWrite(led_red, LOW);
   gateOut(0);
   gate_is_high = false;
@@ -552,6 +547,7 @@ void process_shift_change() {
       }
       resetFunc();
     } else if (time_to_reset_bpm < millis() and not already_reset_bpm)  {
+			//  Change the BPM
       bpm = map(process_pot(pot2), 0, 1023, 10, 400);
       already_reset_bpm = true;
       digitalWrite(led_blue, HIGH);
@@ -561,6 +557,7 @@ void process_shift_change() {
       digitalWrite(led_blue, HIGH);
       delay(100);
       digitalWrite(led_blue, LOW);
+			//  Change the quantization scale, setup thisscale with valid notes
       thisscaleid = map(process_pot(pot1), 0, 1023, 1, 8);
       if (thisscaleid == 1) {
         thisscalelen = 9 ;
@@ -604,6 +601,7 @@ void process_shift_change() {
         }
       }
     } else if (time_to_reset_seq < millis() and not already_reset_seq) {
+			// restart the arduino
       digitalWrite(led_red, HIGH);
       delay(100);
       digitalWrite(led_red, LOW);
@@ -618,13 +616,6 @@ void process_shift_change() {
       }
     }
   }
-  //  if (DEBUG)
-  //  Serial.print(thisscaleid);
-  //  Serial.println("   ");
-  //  Serial.println(thisscalelen);
-  //  for (int k = 0; k < seq_length; k++ ) {
-  //    sequencer_lens[k] = float(process_pot(pot3)) / 1000;
-  //  }
 }
 
 
@@ -635,28 +626,4 @@ void success_leds() {
     digitalWrite(led_green, LOW);
     delay(100);
   }
-}
-
-
-
-void toggleSequencer() {
-  seq_running = !seq_running;
-}
-
-
-void check_pots() {
-  Serial.print("1: ");
-  Serial.print(process_pot(pot1));
-  Serial.print(";  2: ");
-  Serial.print(process_pot(pot2));
-  Serial.print(":  3: . ");
-  Serial.println(process_pot(pot3));
-
-}
-void check_seq() {
-  for (int i = 0; i < seq_length; i++ ) {
-    Serial.print(sequencer_steps[i]);
-    Serial.print("\t");
-  }
-  Serial.println();
 }
