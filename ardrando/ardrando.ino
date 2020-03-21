@@ -18,7 +18,6 @@ boolean KEYDEBUG = 0 ; // this gives details about all the keys pressed at any g
 
 // ---------------------- DIGITAL
 #define gateOutPin 5 // uses PWM out
-#define velOutPin 6
 #define led_red 2
 #define led_blue 3
 #define led_green 4
